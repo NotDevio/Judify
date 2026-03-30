@@ -348,6 +348,13 @@ function renderAdminSongs() {
     </tr>`).join('');
 }
 
+function closeAdminEditSongModal() {
+  document.getElementById('adminEditSongModal').classList.remove('open');
+  _adminEditingSongId = null;
+  const btn = document.getElementById('editSongSubmitBtn');
+  if (btn) { btn.disabled = false; btn.textContent = 'Save Changes'; }
+}
+
 function adminEditSong(songId) {
   const song = songs.find(s => s.id === songId);
   if (!song) return;
@@ -371,6 +378,8 @@ function adminEditSong(songId) {
   if (lyricsField) lyricsField.value = song.lyrics || '';
   const btn = document.getElementById('editSongSubmitBtn');
   if (btn) { btn.disabled = false; btn.textContent = 'Save Changes'; }
+  // Rule 3 & 4: Close admin panel before opening popup — only one UI layer at a time
+  document.getElementById('adminOverlay').classList.remove('open');
   document.getElementById('adminEditSongModal').classList.add('open');
 }
 
@@ -456,10 +465,15 @@ async function submitEditSong() {
 
     await dbPatchSong(song, changed);
 
-    document.getElementById('adminEditSongModal').classList.remove('open');
-    _adminEditingSongId = null;
+    // Rule 1: Close popup after successful confirmation
+    closeAdminEditSongModal();
+
+    // Refresh songs from the actual DB to guarantee UI shows real stored data
+    songs = await dbGetAllSongs();
+
     renderAdminSongs(); renderAdminOverview();
-    if (currentSongIndex >= 0 && songs[currentSongIndex]?.id === song.id) updateNowPlayingUI(song);
+    const refreshedSong = songs.find(s => s.id === song.id);
+    if (currentSongIndex >= 0 && refreshedSong && songs[currentSongIndex]?.id === refreshedSong.id) updateNowPlayingUI(refreshedSong);
     if (currentPlaylistId === '__added__') showAddedSongs();
     else if (currentPlaylistId) { const pl = playlists.find(p => p.id === currentPlaylistId); if (pl) renderTrackList(pl); }
     renderHome();
@@ -710,8 +724,7 @@ async function dbPutSong(song) {
 // PATCH an existing song — only sends fields that actually changed
 // (avoids sending huge base64 cover/audio blobs unnecessarily)
 async function dbPatchSong(song, changedFields) {
-  // changedFields: array of field names that changed e.g. ['name','band','cover']
-  // If not provided, send all non-binary fields only
+  // Build the full field map (DB column name → value)
   const allFields = {
     name: song.name,
     band: song.band,
@@ -719,23 +732,24 @@ async function dbPatchSong(song, changedFields) {
     duration: song.duration || 0,
     added_by_user_id: song.addedByUserId || null,
     added_by_username: song.addedByUsername || null,
-    date_added: song.dateAdded || null
+    date_added: song.dateAdded || null,
+    cover: song.cover || null,
+    band_cover: song.bandCover || null,
+    audio_url: song.audioUrl || null
   };
-  // Only include binary fields if explicitly listed as changed
-  if (!changedFields || changedFields.includes('cover'))     allFields.cover      = song.cover || null;
-  if (!changedFields || changedFields.includes('band_cover')) allFields.band_cover = song.bandCover || null;
-  if (!changedFields || changedFields.includes('audio_url')) allFields.audio_url  = song.audioUrl || null;
 
-  // When called from submitEditSong, changedFields is passed explicitly
-  // so we only include binary fields if they were actually updated
-  const body = changedFields
-    ? Object.fromEntries(changedFields.map(k => {
-        const map = { name:'name', band:'band', album:'album', duration:'duration',
-          cover:'cover', band_cover:'band_cover', audio_url:'audio_url',
-          added_by_user_id:'added_by_user_id', added_by_username:'added_by_username', date_added:'date_added' };
-        return [k, allFields[k]];
-      }).filter(([k]) => k in allFields))
-    : allFields;
+  let body;
+  if (changedFields) {
+    // Only send explicitly changed fields — avoids re-uploading unchanged binary blobs
+    body = {};
+    changedFields.forEach(k => {
+      if (k in allFields) body[k] = allFields[k];
+    });
+  } else {
+    // No changedFields hint — send all non-binary fields only (safe default)
+    const { cover, band_cover, audio_url, ...nonBinary } = allFields;
+    body = nonBinary;
+  }
 
   await sbFetch('songs?id=eq.' + song.id, {
     method: 'PATCH',
@@ -957,13 +971,23 @@ async function renderPublicPlaylists() {
     const rows = await sbFetch('playlists?is_public=eq.true&select=*');
     const publicPls = rows.map(rowToPlaylist).filter(pl => pl.userId !== currentUser.id);
     if (publicPls.length === 0) { section.style.display = 'none'; return; }
+
+    // Fetch owner usernames for all unique user IDs
+    const ownerIds = [...new Set(publicPls.map(pl => pl.userId))];
+    const usernameMap = {};
+    try {
+      const userRows = await sbFetch('users?id=in.(' + ownerIds.join(',') + ')&select=id,username');
+      userRows.forEach(u => { usernameMap[u.id] = u.username; });
+    } catch(e) {}
+
     section.style.display = 'block';
     row.innerHTML = '';
     const colors = ['#3d8b5e','#5e3d8b','#8b5e3d','#e05252','#5283e0','#8be052'];
     publicPls.forEach((pl, i) => {
+      pl.ownerUsername = usernameMap[pl.userId] || null;
       const card = document.createElement('div');
       card.className = 'card';
-      card.innerHTML = `<div class="card-img" style="background:${colors[i%colors.length]}">${pl.cover ? `<img src="${pl.cover}">` : ''}</div><div class="card-title">${pl.name}</div><div class="card-sub" style="color:var(--accent)">🌐 Public</div>`;
+      card.innerHTML = `<div class="card-img" style="background:${colors[i%colors.length]}">${pl.cover ? `<img src="${pl.cover}">` : ''}</div><div class="card-title">${pl.name}</div><div class="card-sub" style="color:var(--accent)">🌐 ${pl.ownerUsername ? pl.ownerUsername : 'Public'}</div>`;
       card.onclick = () => openPublicPlaylist(pl);
       row.appendChild(card);
     });
@@ -986,9 +1010,9 @@ function openPublicPlaylist(pl) {
   document.getElementById('playlistSearchWrap').style.display = 'flex';
   document.getElementById('playlistSearchInput').value = '';
   const usernameEl = document.querySelector('.playlist-meta .username');
-  if (usernameEl) usernameEl.textContent = 'Shared playlist';
-  // Map song IDs to indices in our local songs array
-  const songList = pl.songs.map(sid => songs.findIndex(s => s.id === sid)).filter(i => i !== -1);
+  if (usernameEl) usernameEl.textContent = pl.ownerUsername ? pl.ownerUsername : 'Shared playlist';
+  // pl.songs stores array indices (same global songs array for all users)
+  const songList = pl.songs.filter(i => i >= 0 && i < songs.length);
   const fakePl = { id: '__public__' + pl.id, name: pl.name, songs: songList };
   const totalDur = songList.reduce((sum, idx) => sum + (songs[idx]?.duration || 0), 0);
   document.getElementById('playlistMetaText').textContent = `${songList.length} songs, ${formatDuration(totalDur)}`;
@@ -1434,7 +1458,11 @@ function openPlaylistPicker(action, title) {
 }
 
 // ===== ADD SONG =====
-function openAddSongModal() { document.getElementById('addSongModal').classList.add('open'); }
+function openAddSongModal() {
+  // Rule 3 & 4: Close admin panel before opening popup — only one UI layer at a time
+  document.getElementById('adminOverlay').classList.remove('open');
+  document.getElementById('addSongModal').classList.add('open');
+}
 function closeAddSongModal() { document.getElementById('addSongModal').classList.remove('open'); }
 
 async function submitAddSong() {
