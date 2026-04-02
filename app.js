@@ -10,7 +10,7 @@
 //   then set SUPABASE_STORAGE_BUCKET = 'audio' below.
 //   New songs will upload to Storage and only store a URL — much faster!
 
-const SUPABASE_URL = 'https://pending-shadow-fathers-buyer.trycloudflare.com';
+const SUPABASE_URL = 'https://macro-ivory-conclusions-paradise.trycloudflare.com';
 const SUPABASE_KEY = 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH';
 
 async function sbFetch(path, options = {}) {
