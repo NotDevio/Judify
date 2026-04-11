@@ -1,17 +1,5 @@
-// ===== SUPABASE MIGRATION REQUIRED =====
-// Run this SQL in your Supabase SQL Editor (Dashboard → SQL Editor):
-//
-//   ALTER TABLE songs ADD COLUMN IF NOT EXISTS lyrics TEXT DEFAULT '';
-//   ALTER TABLE playlists ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE;
-//
-// ⚡ PERFORMANCE FIX (for slow loading with 6+ songs):
-//   Your songs store MP3 audio as base64 blobs in the DB (~5-10MB each).
-//   Fix: Create a Supabase Storage bucket named 'audio' (set to Public),
-//   then set SUPABASE_STORAGE_BUCKET = 'audio' below.
-//   New songs will upload to Storage and only store a URL — much faster!
-
-const SUPABASE_URL = 'http://127.0.0.1:54321';
-const SUPABASE_KEY = 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
 async function sbFetch(path, options = {}) {
   const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
