@@ -1,5 +1,5 @@
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY;
+const SUPABASE_URL = `http://127.0.0.1:54321`;
+const SUPABASE_KEY = `sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH`;
 
 async function sbFetch(path, options = {}) {
   const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
