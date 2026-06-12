@@ -1,5 +1,5 @@
-const SUPABASE_URL = `http://127.0.0.1:54321`;
-const SUPABASE_KEY = `sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH`;
+const SUPABASE_URL = `https://vtcingxjtirzxcpkfcmr.supabase.co`;
+const SUPABASE_KEY = `sb_publishable_Kq1XrfKkRMO6TOrPuVHLAw_gwCH7QSk`;
 
 async function sbFetch(path, options = {}) {
   const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
